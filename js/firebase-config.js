@@ -19,19 +19,19 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// Storage hanya di-inisialisasi kalau dibutuhkan
-let storage = null;
-try {
-    storage = firebase.storage();
-} catch (e) {
-    console.warn('⚠️ Storage not available:', e.message);
-}
+// Google Auth Provider
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+googleProvider.setCustomParameters({
+    prompt: 'select_account'
+});
+
+// Facebook Auth Provider (Optional)
+const facebookProvider = new firebase.auth.FacebookAuthProvider();
+facebookProvider.addScope('email');
 
 // Enable Firestore Persistence (Offline Support)
 db.enablePersistence()
-    .then(() => {
-        console.log('✅ Firestore persistence enabled');
-    })
+    .then(() => console.log('✅ Firestore persistence enabled'))
     .catch((err) => {
         if (err.code === 'failed-precondition') {
             console.warn('⚠️ Multiple tabs open');
@@ -42,5 +42,5 @@ db.enablePersistence()
         }
     });
 
-console.log('🚀 Firebase connected!');
+console.log('🚀 Firebase connected successfully!');
 console.log('📦 Project:', firebaseConfig.projectId);
