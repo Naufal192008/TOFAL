@@ -307,28 +307,93 @@ document.getElementById('loginForm')?.addEventListener('submit', async function(
 
 // Google Login
 async function loginWithGoogle() {
-    const provider = new firebase.auth.GoogleAuthProvider();
     try {
-        const result = await auth.signInWithPopup(provider);
+        Swal.fire({
+            title: 'Menghubungkan...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        const result = await auth.signInWithPopup(googleProvider);
         const user = result.user;
+
+        // TUNGGU 2 DETIK dulu sebelum akses Firestore
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Coba akses Firestore dengan retry
+        let retryCount = 0;
+        const maxRetries = 5;
         
-        // Check if user exists in Firestore
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        if (!userDoc.exists) {
-            await db.collection('users').doc(user.uid).set({
-                fullName: user.displayName,
-                email: user.email,
-                phone: user.phoneNumber || '',
-                role: 'user',
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-            });
+        async function tryFirestore() {
+            try {
+                const userDoc = await db.collection('users').doc(user.uid).get();
+                
+                if (!userDoc.exists) {
+                    await db.collection('users').doc(user.uid).set({
+                        fullName: user.displayName || 'User',
+                        email: user.email,
+                        phone: user.phoneNumber || '',
+                        avatar: user.photoURL || '',
+                        role: 'user',
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        lastLogin: firebase.firestore.FieldValue.serverTimestamp(),
+                        isActive: true,
+                        totalOrders: 0,
+                        totalSpent: 0
+                    });
+                } else {
+                    await db.collection('users').doc(user.uid).update({
+                        lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Login Berhasil!',
+                    text: `Selamat datang ${user.displayName}`,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    const userData = userDoc.exists ? userDoc.data() : { role: 'user' };
+                    if (userData.role === 'admin') {
+                        window.location.href = 'admin.html';
+                    } else {
+                        window.location.href = 'dashboard.html';
+                    }
+                });
+
+            } catch (error) {
+                retryCount++;
+                if (retryCount < maxRetries) {
+                    console.log(`Retry ${retryCount}...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    return tryFirestore();
+                }
+                throw error;
+            }
         }
-        
-        window.location.href = 'dashboard.html';
+
+        await tryFirestore();
+
     } catch (error) {
         console.error('Google login error:', error);
-        Swal.fire('Error', 'Gagal login dengan Google', 'error');
+        
+        // JIKA TETAP ERROR, LOGIN TANPA FIRESTORE DULU
+        if (auth.currentUser) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Login Berhasil!',
+                text: 'Selamat datang!',
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                window.location.href = 'dashboard.html';
+            });
+        } else {
+            Swal.fire('Error', 'Gagal login: ' + error.message, 'error');
+        }
     }
 }
 
